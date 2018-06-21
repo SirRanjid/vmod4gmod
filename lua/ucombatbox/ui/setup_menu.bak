@@ -1,0 +1,1030 @@
+UCombatBox.SetupMenu = UCombatBox.SetupMenu or nil
+UCombatBox.Selection = UCombatBox.Selection or {}
+
+local function EyeVec()
+	if not input.IsMouseDown(MOUSE_RIGHT) then
+		return gui.ScreenToVector( gui.MousePos() )
+	else
+		return EyeVector()
+	end
+end
+
+UCombatBox.MenuPlugins = UCombatBox.MenuPlugins or { id = {} }
+function UCombatBox.AddMenuPlugin(PLUG)
+	for k,v in ipairs(UCombatBox.MenuPlugins) do
+		if v.Name == PLUG.Name then
+			UCombatBox.MenuPlugins[k] = PLUG --update
+			return
+		end
+	end
+	table.insert(UCombatBox.MenuPlugins,PLUG)
+end
+
+UCombatBox.RMenuPlugins = UCombatBox.RMenuPlugins or { id = {} }
+function UCombatBox.AddRMenuPlugin(PLUG)
+	for k,v in ipairs(UCombatBox.RMenuPlugins) do
+		if v.Name == PLUG.Name then
+			UCombatBox.RMenuPlugins[k] = PLUG --update
+			return
+		end
+	end
+	table.insert(UCombatBox.RMenuPlugins,PLUG)
+end
+
+UCombatBox.scroll_speed = CreateClientConVar( "ucb_setup_scrollspeed", "0" ) 
+UCombatBox.ucb_zoom = CreateClientConVar( "ucb_setup_zoom", "0" ) 
+UCombatBox.ucb_light = CreateClientConVar( "ucb_setup_light", "1" ) 
+
+local scroll_speed = UCombatBox.scroll_speed
+local ucb_zoom = UCombatBox.ucb_zoom
+local ucb_light = UCombatBox.ucb_light
+
+local VEC_COL_HINT = Vector(80,255,120)
+local VEC_COL_HEAD = Vector(255,80,0)
+
+--include("vgui/v_slider.lua")
+local DragContext = UCombatBox.DragContext 
+
+do
+	local PANEL = {}
+	
+	function PANEL:Init()
+
+		self.list = vgui.Create( "DListLayout" )
+		self:SetContents(self.list)
+		self.list:DockPadding(2,2,2,2)
+		
+		
+		self:Dock(TOP)
+		
+	end
+	
+	function PANEL:MakeDroppable(...)
+		return self.list:MakeDroppable(...)
+	end
+	
+	function PANEL:Add(...)
+		return self.list:Add(...)
+	end
+	
+	function PANEL:Clear()
+		return self.list:Clear()
+	end
+	
+	function PANEL:Paint( w, h )
+		if h < 21 then
+			surface.SetDrawColor(0,80,128,255)
+			surface.DrawRect(1,1,w-2,18)
+		else
+			surface.SetDrawColor(0,160,255,255)
+			surface.DrawRect(1,1,w-2,18)
+		end
+	end
+	
+	function PANEL:SetTextColor( col )
+		self.Header:SetTextColor( col )
+	end
+	
+	derma.DefineControl( "DCollapsibleList", "", PANEL, "DCollapsibleCategory" )
+end
+
+do	--make dtextentry great again lol
+	local PANEL = {}
+	
+	function PANEL:PerformLayout()
+		
+		derma.SkinHook( "Layout", "TextEntry", self )
+			
+		self:NoClipping( self:HasFocus() )
+		self:SetDrawOnTop( self:HasFocus() ) 
+		if self:HasFocus() then
+			surface.SetFont(self:GetFont())
+			self:SetWide(math.max(self:GetWide(),surface.GetTextSize(self:GetValue())+22))
+		end
+
+	end
+	
+	function PANEL:OnGetFocus()
+		surface.SetFont(self:GetFont())
+		self:SetWide(math.max(self:GetWide(),surface.GetTextSize(self:GetValue())+22))
+	end
+
+	function PANEL:OnGetFocus()
+		surface.SetFont(self:GetFont())
+		self:SetWide(math.max(self:GetWide(),surface.GetTextSize(self:GetValue())+22))
+	end
+	
+	derma.DefineControl( "DTextEntry2", "", PANEL, "DTextEntry" )
+end
+
+
+UCombatBox.setup_open = UCombatBox.setup_open or -1
+function UCombatBox.OpenSetupMenu(id)
+	if UCombatBox.SetupMenu  and UCombatBox.SetupMenu.bck ~= nil and IsValid(UCombatBox.SetupMenu.bck) then UCombatBox.SetupMenu.bck:Remove() end
+	if UCombatBox.SetupMenu ~= nil and IsValid(UCombatBox.SetupMenu) then UCombatBox.SetupMenu:Remove() end
+	
+	local ent = Entity(id)
+	if not ent or not IsValid(ent) or not UCombatBox.ents[ent] then return end
+	local box = UCombatBox.ents[ent]
+	UCombatBox.setup_open = id
+	local cpy = table.Copy(box)
+
+	--in case there is no such box or you're not an owner.
+	if not box or not box.STDID[LocalPlayer():SteamID()] then return end
+
+	local menu = vgui.Create("DFrame")
+	UCombatBox.SetupMenu = menu
+	
+	menu:DockPadding(50,50,50,50)
+	menu:SetSize(415,640)
+	menu.ent = ent
+	menu:MakePopup()
+	menu:SetTitle("")
+	
+	local menuhooks = {}
+	function menu:hook(a,b,...)
+		--print(a,b)
+		menuhooks[#menuhooks+1] = {a,b}
+		hook.Add(a,b,...)
+	end
+	
+	function menu:ClearHooks()
+		for k,v in ipairs(menuhooks) do
+			hook.Remove(v[1],v[2])
+		end
+	end
+	
+	local menuClearHooks = menu.ClearHooks
+	
+	local name = menu:Add("DTextEntry")
+	menu.name = name
+	name:DockPadding(5,5,5,5)
+	name:SetPos(5,3)
+	name:SetSize(300,18)
+	name:SetUpdateOnType(true)
+	name:SetText(ent.Data._N)
+	
+	local global = menu:Add("DScrollPanel")
+	global:DockPadding(5,5,5,5)
+	global:SetPos(5,30)
+	global:SetSize(200,400)
+	global:DockMargin(5,5,5,5)
+	
+	local mode = menu:Add("DScrollPanel")
+	mode:DockPadding(5,5,5,5)
+	mode:SetPos(210,30)
+	mode:SetSize(200,400)
+
+	local invite = menu:Add("DPanel")
+	invite:DockPadding(5,5,5,5)
+	
+	invite:SetPos(5,435)
+	invite:SetSize(405,200)
+	
+
+	local i_left = invite:Add("DScrollPanel")
+	i_left.cont = {}
+	i_left:Dock(LEFT)
+	i_left:SetWide(180)
+	function i_left:Paint(w,h)
+		surface.SetDrawColor(255,255,255,120)
+		surface.DrawRect(0,0,w,h)
+	end
+
+
+	local i_right = invite:Add("DScrollPanel")
+	i_right:Dock(RIGHT)
+	i_right:SetWide(180)
+	i_right.cont = {}
+	function i_right:Paint(w,h)
+		surface.SetDrawColor(255,255,255,120)
+		surface.DrawRect(0,0,w,h)
+	end
+
+	local i_right_lbl = i_right:Add("DLabel")
+	i_right_lbl:Dock(TOP)
+	i_right_lbl:SetTextColor(Color(50,50,50,200))
+	i_right_lbl:SetText("Active:")
+
+	local i_left_new = i_left:Add("DCollapsibleList")
+	i_left_new:Dock(TOP)
+	i_left_new:SetTall(140)
+
+
+	local i_left_lbl = i_left:Add("DLabel")
+	i_left_lbl:Dock(TOP)
+	i_left_lbl:SetTextColor(Color(50,50,50,200))
+	i_left_lbl:SetText("Available:")
+
+	local i_left_spacer = i_left:Add("DPanel")
+	i_left_spacer.Paint = function() end
+	i_left_spacer:Dock(TOP)
+	i_left_spacer:SetTall(180)
+
+
+	local i_left_new_create = i_left_new:Add("DButton")
+	i_left_new_create:SetSize(90,20)
+	i_left_new_create:SetText("Create Team")
+	i_left_new_create:SetPos( 80,22 )
+	--i_left_new_create:DockMargin(0,-20,0,100)
+	--i_left_new_name:SetSize(60,20)
+	i_left_new_create:Dock( TOP )
+
+	local i_left_new_color = i_left_new:Add("DColorMixer")
+	i_left_new_color:Dock( TOP )
+	i_left_new_color:SetPos( 5,44 )
+	i_left_new_color:SetSize(90,70)
+	--i_left_new_color:DockMargin(0,0,-0,0)
+	i_left_new_color:SetPalette( false ) 
+	i_left_new_color:SetAlphaBar( false ) 	
+
+	function i_left_new:Paint(w,h)
+		surface.SetDrawColor(i_left_new_color:GetColor())
+		surface.DrawRect(0,0,w,20)
+	end
+
+	local i_left_new_name = i_left_new:Add("DTextEntry2")
+	--i_left_new_name:DockMargin(0,0,100,0)
+	i_left_new_name:Dock( TOP )
+	i_left_new_name:SetPos( 5,22 )
+	i_left_new_name:NoClipping(true)
+	i_left_new_name:SetUpdateOnType(true)
+	i_left_new_name:SetSize(60,20)
+
+	function i_left_new_name:Think()
+		self:PerformLayout()
+	end
+		
+	function i_left_new:Think()
+		self:SetLabel("New Team: \""..i_left_new_name:GetText().."\"")
+	end
+
+	local function makeoffswitch(name,col,c1)
+		--if i_right.cont[name] then return end
+		local teamb = i_right:Add("DButton")
+		teamb:Dock(TOP)
+		i_right.cont[teamb] = teamb
+		function teamb:PaintOver(w,h)
+			surface.SetDrawColor(col)
+			surface.DrawRect(0,0,w,h)
+
+			surface.SetDrawColor(50,50,50,230)
+			surface.DrawOutlinedRect(0,0,w,h)
+
+			surface.SetTextColor(255,255,255,255)
+			surface.SetFont("ChatFont")
+			local sx,sy = surface.GetTextSize(name)
+			surface.SetTextPos((w-sx)/2,(h-sy)/2)
+			surface.DrawText(name)
+		end
+		teamb:SetText(name)
+		if f1 then f1(teamb) end
+		teamb.DoClick = function(tself)
+			ent:RemoveTeam(name)
+			--if c1 then c1() end
+			teamb:Remove()
+		end
+	end
+
+	local function makeonswitch(name,col,c1)
+		--if i_left.cont[name] then return end
+		local teamb = i_left:Add("DButton")
+		teamb:Dock(TOP)
+		teamb:MoveToBefore(i_left_spacer)
+		i_left.cont[teamb] = teamb
+		function teamb:PaintOver(w,h)
+			surface.SetDrawColor(col)
+			surface.DrawRect(0,0,w,h)
+
+			surface.SetDrawColor(50,50,50,230)
+			surface.DrawOutlinedRect(0,0,w,h)
+
+			surface.SetTextColor(255,255,255,255)
+			surface.SetFont("ChatFont")
+			local sx,sy = surface.GetTextSize(name)
+			surface.SetTextPos((w-sx)/2,(h-sy)/2)
+			surface.DrawText(name)
+		end
+		teamb:SetText(name)
+		if f1 then f1(teamb) end
+		teamb.DoClick = function(tself)
+			ent:AddTeam(name,col)
+			--if c1 then c1() end
+			--teamb:Remove()
+		end
+		teamb.DoRightClick = function(tself)
+			teamb:Remove()
+		end
+	end
+
+	function i_right:update()
+		for k,v in ipairs(self.cont) do
+			if IsValid(v) then v:Remove() end
+		end
+
+		for name,v in pairs(ent.Data._T) do
+			--switchers(self,i_left,name,v.color,nil,function(but) but:MoveToBefore(i_left_spacer) end, function() ent:RemoveTeam(name) print("rem") end,function() ent:AddTeam(name,v.color) print("add") end)
+			makeoffswitch(name,v.color)
+		end
+	end
+	for name,v in pairs(ent.Data._T) do
+		makeonswitch(name,v.color)
+	end
+	i_right:update()
+	function i_left_new_create:DoClick()
+		local name = i_left_new_name:GetText()
+		local color = i_left_new_color:GetColor()
+		--switchers(i_left,i_right,name,color,function(but) but:MoveToBefore(i_left_spacer) end,nil, function() ent:AddTeam(name,color) print("add") end,function() ent:RemoveTeam(name) print("rem") end)
+		makeonswitch(name,color)
+		--i_right:update()
+	end
+
+	hook.Add("UCB_TeamAdded","ucb_team_update",function() i_right:update() end)
+	hook.Add("UCB_TeamRemoved","ucb_team_update",function() i_right:update() end)
+
+	--menu:SizeToContents()
+	
+	local py = 50 
+	local px = ScrW()/2-80
+	local SurfaceInfos = {}
+	
+	local mat = Material("gui/gradient")
+	
+	local function DrawSurfaceInfo(txt,alp,col)
+	
+		local sx,sy = surface.GetTextSize(txt)
+		py = py + 2 + sy
+		
+		alp = math.Clamp(alp,0,1)
+		
+		surface.SetMaterial(mat)
+		surface.SetDrawColor(0,0,0,220*alp)
+		surface.DrawTexturedRect(px-2, py-1, sx*1.4,sy+2)
+		
+		surface.SetTextColor(0,0,0,150*alp)
+		surface.SetTextPos(px+1, py+1)
+		surface.DrawText(txt)
+		
+		surface.SetTextColor(col.x,col.y,col.z,255*alp)
+		surface.SetTextPos(px, py)
+		surface.DrawText(txt)
+		
+	end
+	
+	local function AddSurfacePrint(id,col,t,txt,prnt)
+		col = col or Vector(220,205,180)
+		local tab = {id ~= "" and id..":\t\t\t\t"..txt or "", t or 3, col}
+		SurfaceInfos[tonumber(#SurfaceInfos+1)] = tab
+		if prnt then MsgC(Color(col.x,col.y,col.z),id ~= "" and "|"..id..":\t"..txt.."\n" or "") end
+	end
+	
+	local function AddSurfaceInfo(id,col,t,txt,prnt)
+		col = col or Vector(220,205,180)
+		if txt then
+			local tab = {txt, t or 3, col}
+			SurfaceInfos[id] = tab
+			if prnt then MsgC(Color(col.x,col.y,col.z),"|"..id..":\t"..txt.."\n") end
+		else
+			SurfaceInfos[tonumber(#SurfaceInfos+1)] = {id, t or 1, col}
+			if prnt then MsgC(Color(col.x,col.y,col.z),"|"..id.."\n") end
+		end
+	end
+	
+	menu.AddSurfacePrint = AddSurfacePrint
+	menu.AddSurfaceInfo = AddSurfaceInfo
+	
+	function name:OnValueChange(val)
+		ent.Data._N = val
+		AddSurfaceInfo("Name",Vector(255,255,255),2,val)
+	end
+	
+	do
+		local tab = {
+			{"A","Movement",Vector(180,215,255),{
+				10,
+				Vector(145,180,220),
+				"L_CTRL + Scroll = Movement-speed",
+				Vector(180,215,255),
+				"Scroll = Zoom",
+				Vector(220,180,145),
+				"\tIf Zoomed IN:\t\tfly-controls",
+				"\tIf Zoomed OUT:\teditor-controls",
+				Vector(180,215,255),
+				"",
+				"WASD = Forward/Right",
+				"Space/Alt = Up/Down",
+				"Use the cursor to Interact",
+			}},
+		}
+		
+		local c = #tab
+		local ze = math.floor(math.log(100, 10))
+		
+		function menu.PrintHelp()
+			AddSurfacePrint("~~Controls~~",VEC_COL_HEAD,3.5,"(also printed)",true)
+			
+			
+			local col = Vector()
+			local add = 0
+			local sub = 0
+			
+			for i = 1, c do
+				local v = tab[i]
+				if not v then break end
+				AddSurfacePrint(string.rep("_",ze)..v[1],v[3],25+8*(i-1),v[2],true)
+				col = v[3]
+				local cj = #v[4]
+				for j = 1, cj do
+					local w = v[4][j]
+					if not w then break end
+					if type(w) == "Vector" then
+						col = w
+						sub = sub+1
+					elseif type(w) == "number" then
+						add = w
+						sub = sub+1
+					elseif w == "" then
+						sub = sub+1
+						AddSurfacePrint("",col,8*i+add,"",true)
+					
+					else
+						local ze2 = math.floor(math.log(j-sub, 100)+1)
+						AddSurfacePrint(v[1]..string.rep("0",ze-ze2)..(j-sub),col,8*i+add,tostring(w),true)
+					end
+					add = add + 0.1
+				end
+				add = add + 10
+			end
+		end
+	end
+	--menu.PrintHelp()
+	
+	--global scale and positioning sliders:
+	local dragp = ent.Data.POS + Vector(0,0,ent.Data.SIZE.z/2)
+	
+	local ctx = DragContext.create("Move X",dragp,Angle(0,0,0),300,0)
+	menu.ctx = ctx
+	local cty = DragContext.create("Move Y",dragp,Angle(0,90,0),300,0)
+	local ctz = DragContext.create("Move Z",dragp,Angle(-90,0,0),300,0)
+	
+	local scx = DragContext.create("Scale X",ent.Data.POS+Vector(ent.MinScale.x+ent.MaxScale.x/2,ent.Data.SIZE.y/2,0),Angle(0,0,0),ent.MaxScale.x,0)
+	local scy = DragContext.create("Scale Y",ent.Data.POS+Vector(ent.Data.SIZE.x/2,ent.MinScale.y+ent.MaxScale.y/2,0),Angle(0,90,0),ent.MaxScale.y,0)
+	local scz = DragContext.create("Scale Z",ent.Data.POS+Vector(ent.Data.SIZE.x/2,ent.Data.SIZE.y/2,ent.MinScale.z+ent.MaxScale.z/2),Angle(-90,0,0),ent.MaxScale.z,0)
+	
+	menu.ctx = ctx
+	menu.cty = cty
+	menu.ctz = ctz
+	menu.scx = scx
+	menu.scy = scy
+	menu.scz = scz
+	
+	ctx:SetFace(true)
+	cty:SetFace(true)
+	ctz:SetFace(true)
+	
+	scx:SetFace(true)
+	scy:SetFace(true)
+	scz:SetFace(true)
+	
+	local function clear()
+		menuClearHooks()
+		
+		ctx:Remove()
+		cty:Remove()
+		ctz:Remove()
+
+		scx:Remove()
+		scy:Remove()
+		scz:Remove()
+		
+		for k,PLUGIN in ipairs(UCombatBox.MenuPlugins) do
+			if PLUGIN.Clear then PLUGIN:Clear() end
+		end 		
+	end
+	
+	function ctx:StartDragging(v_start_loc, pos_abs)
+		self:SetOffset(ent.Data.POS)
+	end
+	
+	--Move
+	function ctx:OnDragging(v_dist, pos_abs, pos_loc)
+		local off = self:GetOffset()
+		ent.Data.POS = Vector(v_dist.x + off.x,off.y,off.z)
+		
+		hook.Call("UCB_Setup_OnDragging",GAMEMODE,Vector(v_dist.x,0,0))
+		--UCB_Setup_StopDragging
+		
+		AddSurfaceInfo("Move X",Vector(255,0,0),1,math.floor(ent.Data.POS.x).." ("..(v_dist.x + off.x).."), "..tostring(ent.Data.POS))
+	end
+	
+	function cty:OnDragging(v_dist, pos_abs, pos_loc)
+		local off = self:GetOffset()
+		ent.Data.POS = Vector(off.x,v_dist.x + off.y,off.z)
+		
+		hook.Call("UCB_Setup_OnDragging",GAMEMODE,Vector(0,v_dist.x,0))
+
+		AddSurfaceInfo("Move Y",Vector(0,255,0),1,math.floor(ent.Data.POS.x).." ("..v_dist.x..")")
+	end
+	
+	function ctz:OnDragging(v_dist, pos_abs, pos_loc)
+		local off = self:GetOffset()
+		ent.Data.POS = Vector(off.x,off.y,v_dist.x + off.z)
+		
+		hook.Call("UCB_Setup_OnDragging",GAMEMODE,Vector(0,0,v_dist.x))
+
+		AddSurfaceInfo("Move Z",Vector(0,0,255),1,math.floor(ent.Data.POS.x).." ("..v_dist.x..")")
+	end
+	
+	--Scale:
+	function scx:OnDragging(v_dist, pos_abs, pos_loc)
+		ent.Data.SIZE.x = math.Clamp(ent.MinScale.x + pos_loc.x + ent.MaxScale.x/2,ent.MinScale.x,ent.MaxScale.x)
+		
+		AddSurfaceInfo("Size X",Vector(255,100,100),1,math.floor(ent.Data.SIZE.x).."/ "..ent.MaxScale.x)
+	end
+	
+	function scy:OnDragging(v_dist, pos_abs, pos_loc)
+		ent.Data.SIZE.y = math.Clamp(ent.MinScale.y + pos_loc.x + ent.MaxScale.y/2,ent.MinScale.y,ent.MaxScale.y)
+		
+		AddSurfaceInfo("Size Y",Vector(100,255,100),1,math.floor(ent.Data.SIZE.y).."/ "..ent.MaxScale.y)
+	end
+	
+	function scz:OnDragging(v_dist, pos_abs, pos_loc)
+		ent.Data.SIZE.z = math.Clamp(ent.MinScale.z + pos_loc.x + ent.MaxScale.z/2,ent.MinScale.z,ent.MaxScale.z)
+		
+		AddSurfaceInfo("Size Z",Vector(100,100,255),1,math.floor(ent.Data.SIZE.z).."/ "..ent.MaxScale.z)
+	end
+	
+	do
+		local hintc = 0
+		local htxt = "Hold LCTRL to disable position-snapping."
+		function ctx:StopDragging(dlt_v,hitpos,hitpos_l)
+			
+			local sz = ent.Data.SIZE/2
+			ctx:SetPos(ent.Data.POS + Vector(sz.x,0,sz.z))
+			cty:SetPos(ent.Data.POS + Vector(0,sz.y,sz.z))
+			ctz:SetPos(ent.Data.POS + Vector(0,0,sz.z))
+			
+			scx:SetPos(ent.Data.POS+Vector(ent.MinScale.x+ent.MaxScale.x/2,sz.y,0))
+			scy:SetPos(ent.Data.POS+Vector(sz.x,ent.MinScale.y+ent.MaxScale.y/2,0))
+			scz:SetPos(ent.Data.POS+Vector(sz.x,sz.y,ent.MinScale.z+ent.MaxScale.z/2))
+
+			ctx:SetSizeX(ent.Data.SIZE.x)
+			cty:SetSizeX(ent.Data.SIZE.y)
+			ctz:SetSizeX(ent.Data.SIZE.z)
+			
+			hook.Call("UCB_Setup_StopDragging",GAMEMODE,ent.Data.POS-self:GetOffset())
+			
+			if not input.IsKeyDown(KEY_LCONTROL) then
+				if hintc > 1 then return end
+				hintc = hintc + 1
+				AddSurfacePrint("Hint",VEC_COL_HINT,4,htxt,true)
+			end
+			ent:OnSizeChanged()
+		end
+		ctx:StopDragging()
+	end
+	cty.StartDragging = ctx.StartDragging
+	ctz.StartDragging = ctx.StartDragging
+	
+	cty.StopDragging = ctx.StopDragging
+	ctz.StopDragging = ctx.StopDragging
+	scx.StopDragging = ctx.StopDragging
+	scy.StopDragging = ctx.StopDragging
+	scz.StopDragging = ctx.StopDragging
+	
+	
+	menu:hook("PostRenderVGUI","UCombatBox.SetupMenu_HUD",function()
+		if not IsValid(menu) then clear() return end
+		surface.SetFont("default")
+		
+		py = 50
+		for k,v in pairs(SurfaceInfos) do	--info
+			if type(k) == "string" then
+				if v[2] > 0 then
+					v[2] = v[2] - FrameTime()
+					DrawSurfaceInfo(k..": "..v[1],v[2],v[3])
+					if v[2] <= 0 then SurfaceInfos[k] = nil end
+				end
+			end
+		end
+		
+		DrawSurfaceInfo("",1,Vector(0,0,0))
+		
+		for k,v in ipairs(SurfaceInfos) do --print
+			
+			if v[2] > 0 then
+				v[2] = v[2] - FrameTime()
+				if v[4] then
+					DrawSurfaceInfo(v[4]..": "..v[1],v[2],v[3])
+				else
+					DrawSurfaceInfo(v[1],v[2],v[3])
+				end
+				if v[2] <= 0 then table.remove(SurfaceInfos,1) end
+			end
+		end
+		
+	end)
+	AddSurfaceInfo("Size",nil,8,(math.floor(ent.Data.SIZE.x*100)/100)..", "..(math.floor(ent.Data.SIZE.y*100)/100)..", "..(math.floor(ent.Data.SIZE.z*100)/100))
+		
+	do --view + drag
+		local cx,cy = gui.MousePos()
+		local mx,my = gui.MousePos()
+		
+		local distlerp = 0
+		
+		local view = {
+
+			angles = Angle(0,0,0),
+			origin = Vector(0,0,0),
+			fov = 0,
+
+			drawviewer = true,
+			
+		}
+		
+		menu.bck = vgui.Create("DPanel") --magic
+		menu.bck:SetPos(0,0)
+		menu.bck:Dock(FILL)
+		--menu.bck:SetCursor( "sizeall" )
+		
+		menu:SetKeyboardInputEnabled(true)
+		menu.bck:SetKeyboardInputEnabled(true)
+				
+		function menu.bck:Paint(w,h) end
+		
+		function menu.bck:Think()
+			if not IsValid(menu) then self:Remove() return end
+		end
+		
+		function menu.bck:OnMouseWheeled(d)
+			if input.IsKeyDown(KEY_LCONTROL) then
+				scroll_speed:SetFloat(math.Clamp(scroll_speed:GetFloat()+d*0.25,0.25,10))
+				AddSurfaceInfo("Speed",Vector(0,255,215),2,(math.floor(scroll_speed:GetFloat()*10000)/100).." %")
+			else
+				local ldist = ucb_zoom:GetFloat()
+				ucb_zoom:SetFloat(math.Clamp(ucb_zoom:GetFloat()-d*1.25,0,20))
+				
+				if (ldist == 0 and ucb_zoom:GetFloat() != 0) then
+					AddSurfacePrint("Cam",VEC_COL_HEAD,0.8,"Editor-View")
+				elseif (ldist != 0 and ucb_zoom:GetFloat() == 0) then
+					AddSurfacePrint("Cam",VEC_COL_HEAD,0.8,"First-Person-View")
+				end
+				
+				local htxt = (math.floor(ucb_zoom:GetFloat()*10)/10).." / 20"
+				AddSurfaceInfo("Zoom",Vector(120,215,255),2,htxt)
+			end
+		end
+		
+		local drl, drr, drt = false, false, 0
+		
+		function menu.bck:OnMousePressed( keyCode ) 
+			if drl or drr then return end
+			
+			if keyCode == MOUSE_LEFT then
+				drl = true
+			elseif keyCode == MOUSE_RIGHT then
+				menu.bck:SetCursor("blank")
+				mx,my = gui.MousePos()
+				drr = true
+				drt = CurTime()+0.2
+			end
+		end
+		
+		local OR = UCombatBox.ViewOrigins[Entity(UCombatBox.setup_open)] or ent.Data.POS + ent.Data.SIZE/2 - (EyeVector() * ent.Data.SIZE:Length())
+		local OFF = Vector(0,0,0)
+		
+		function menu.btnClose:DoClick() UCombatBox.ViewOrigins[Entity(UCombatBox.setup_open)] = OR self:GetParent():Remove() hook.Call("UCB_SetupMenu_Close") end
+
+		local function isPressed(key)
+			return LocalPlayer():KeyDown( key ) 
+		end
+		
+		
+		local function r_menu()
+			if hook.Call("UCB_Setup_RMenu_Open",GAMEMODE) == false then return end
+			
+			local tr = util.TraceLine( {
+				start = EyePos(),
+				endpos = EyePos() + EyeVec() * 32768,
+				mask =  MASK_PLAYERSOLID_BRUSHONLY,
+			} )
+
+			local Menu = DermaMenu()
+			UCombatBox.RMenu = Menu
+			Menu:AddOption( "Close"):SetIcon("icon16/cancel.png")
+			--local add = Menu:AddSubMenu( "Plugins" )
+			Menu:AddSpacer()
+			for k,v in ipairs(UCombatBox.RMenuPlugins) do
+				v:Setup(Menu,tr)
+			end
+					
+			Menu:AddSpacer()	
+			local move = Menu:AddSubMenu( "Move" )
+			local scale= Menu:AddSubMenu( "Scale" )
+			Menu:AddSpacer()	
+			local options = Menu:AddSubMenu( "Settings" )
+			
+			Menu:AddSpacer()	
+
+			
+			move:AddOption( "X: Add Point", function() ctx:AddPoint(tr.HitPos) end ):SetIcon("icon16/vector_add.png")
+			move:AddOption( "Y: Add Point", function() cty:AddPoint(tr.HitPos) end ):SetIcon("icon16/vector_add.png")
+			move:AddOption( "Z: Add Point", function() ctz:AddPoint(tr.HitPos) end ):SetIcon("icon16/vector_add.png")
+			move:AddSpacer()
+			move:AddOption( "X: Show/Hide", function() on = ctx:GetEnabled() ctx:SetEnabled(not on) end ):SetIcon("icon16/shading.png")
+			move:AddOption( "Y: Show/Hide", function() on = cty:GetEnabled() cty:SetEnabled(not on) end ):SetIcon("icon16/shading.png")
+			move:AddOption( "Z: Show/Hide", function() on = ctz:GetEnabled() ctz:SetEnabled(not on) end ):SetIcon("icon16/shading.png")
+			move:AddSpacer()
+			move:AddOption( "All: Show/Hide", function() local on = ctx:GetEnabled() ctx:SetEnabled(not on) cty:SetEnabled(not on) ctz:SetEnabled(not on) end ):SetIcon("icon16/shading.png")
+			
+			
+			scale:AddOption( "X: Add Point", function() scx:AddPoint(tr.HitPos) end ):SetIcon("icon16/vector_add.png")
+			scale:AddOption( "Y: Add Point", function() scy:AddPoint(tr.HitPos) end ):SetIcon("icon16/vector_add.png")
+			scale:AddOption( "Z: Add Point", function() scz:AddPoint(tr.HitPos) end ):SetIcon("icon16/vector_add.png")
+			scale:AddSpacer()
+			scale:AddOption( "X: Show/Hide", function() on = scx:GetEnabled() scx:SetEnabled(not on) end ):SetIcon("icon16/shading.png")
+			scale:AddOption( "Y: Show/Hide", function() on = scy:GetEnabled() scy:SetEnabled(not on) end ):SetIcon("icon16/shading.png")
+			scale:AddOption( "Z: Show/Hide", function() on = scz:GetEnabled() scz:SetEnabled(not on) end ):SetIcon("icon16/shading.png")
+			scale:AddSpacer()
+			scale:AddOption( "Show/Hide", function() local on = scx:GetEnabled() scx:SetEnabled(not on) scy:SetEnabled(not on) scz:SetEnabled(not on) end ):SetIcon("icon16/shading.png")
+			
+			options:AddOption( "Toggle Light", function() ucb_light:SetBool(not ucb_light:GetBool()) end ):SetIcon("icon16/lightbulb.png")
+			
+			
+			Menu:Open()
+		end
+		
+		menu:hook( "CalcView", "UCombatBox.SetupMenu_View", function()
+			--if isPressed(IN_USE) then menu:Remove() end
+			if not IsValid(menu) then clear() return end
+			
+			distlerp = distlerp + math.Clamp(ucb_zoom:GetFloat() - distlerp,-FrameTime()*5,FrameTime()*5)
+			local di = ((distlerp+6)^3)-216
+			
+			local newview = {}
+			newview.angles = EyeAngles()
+			if drr then
+				if not input.IsMouseDown(MOUSE_RIGHT) then
+					menu.bck:SetCursor("")
+					drr = false
+					if drt > CurTime() then
+						r_menu()
+					end
+				else
+					local ocx,ocy = gui.MousePos()
+					input.SetCursorPos(mx,my)
+					cx,cy = mx,my
+					local dcx,dcy = cx-ocx,cy-ocy
+					
+					if math.abs(dcx)+math.abs(dcy) > 0 and drt > 0 then drt = 0 end
+					
+					local ang = EyeAngles() + Angle(-dcy,dcx,0)*0.3
+					newview.angles = Angle(math.Clamp(ang.p,-89,89),ang.y,0)
+				end
+				
+			elseif drl then
+
+				if not input.IsMouseDown(MOUSE_LEFT) then drl = false end
+				
+			end
+			
+			//___  ___
+			//||\\//||
+			//|| \/ ||
+			//||Cam ||ovement
+			//
+			if input.IsMouseDown(MOUSE_RIGHT) then
+				
+				local move = Vector(0,0,0)
+				
+				if input.IsKeyDown(KEY_W) then
+					move.x = 1
+				elseif input.IsKeyDown(KEY_S) then
+					move.x = -1
+				end
+				
+				if input.IsKeyDown(KEY_D) then
+					move.y = 1
+				elseif input.IsKeyDown(KEY_A) then
+					move.y = -1
+				end
+				
+				if input.IsKeyDown(KEY_SPACE) then
+					move.z = 1
+				elseif input.IsKeyDown(KEY_LALT) then
+					move.z = -1
+				end
+				
+				if input.IsKeyDown(KEY_LSHIFT) then
+					move = move * 2.4
+				end
+				move = move * scroll_speed:GetFloat() * 100
+				
+				if ucb_zoom:GetFloat() == 0 then 
+					OR = OR + (EyeAngles():Forward() * move.x 
+							+ EyeAngles():Right() * move.y
+							+ EyeAngles():Up() * move.z)
+							* FrameTime()
+				else
+					local yaw = Angle(0,EyeAngles().y,0)
+					
+					OR = OR + (yaw:Forward() * move.x 
+							+ yaw:Right() * move.y
+							+ Vector(0,0,move.z))
+							* FrameTime()
+				end
+			end
+			
+			newview.origin = (OR + OFF ) - (newview.angles:Forward() * di) --+ (newview.angles:Right()*ox) + (newview.angles:Up()*oy)
+			--newview.origin = (OR + OFF ) + (newview.angles:Right()*ox) + (newview.angles:Up()*oy)
+			newview.fov = fov
+
+			newview.drawviewer = true -- this doesn't work (probably because I use SetViewEntity serverside)
+			view = newview
+			
+			if ucb_light:GetBool() then
+				local dlight = DynamicLight( LocalPlayer():EntIndex() )
+				if ( dlight ) then
+					dlight.pos = OR
+					dlight.r = 255
+					dlight.g = 255
+					dlight.b = 255
+					dlight.brightness = 1
+					dlight.Decay = 10000
+					dlight.Size = 10000
+					dlight.DieTime = CurTime() + 1
+				end
+			end
+			
+			return newview
+		end)
+		
+		local sca = 16
+		local scxs = math.floor(ScrH()/sca/4)
+		local scys = math.floor(ScrW()/sca/4)
+		
+		local scy2 = -scys
+		local scy3 = scys*2
+		
+		local sca2 = 2
+		local scy4 = -6
+		local scy5 = 12
+		
+		menu:hook("PostDrawTranslucentRenderables","UCombatBox.SetupMenu_Orientation",function()
+			if not IsValid(menu) then clear() return end
+			if distlerp <= 0 then return end
+			local x = math.Clamp(distlerp/10,0,0.9)
+
+			alp = x^2*200
+			if alp > 1 then
+				cam.Start3D2D( (OR + OFF ), Angle(90,0,0), sca )
+					surface.SetDrawColor( 255,0,0,alp )
+					surface.DrawOutlinedRect( scy2,scy2,scy3,scy3 )
+					cam.IgnoreZ( false ) 
+				cam.End3D2D()
+				
+				cam.Start3D2D( (OR + OFF ), Angle(0,0,90), sca )
+					surface.SetDrawColor( 0,255,0,alp )
+					surface.DrawOutlinedRect( scy2,scy2,scy3,scy3 )
+					cam.IgnoreZ( false )
+				cam.End3D2D()
+				
+				cam.Start3D2D( (OR + OFF ), Angle(0,0,0), sca )
+					surface.SetDrawColor( 0,0,255,alp )
+					surface.DrawOutlinedRect( scy2,scy2,scy3,scy3 )
+					cam.IgnoreZ( false ) 
+				cam.End3D2D()
+				alp = (100-alp)
+				if alp > 1 then
+					cam.Start3D2D( (OR + OFF ), Angle(90,0,0), sca2 )
+						surface.SetDrawColor( 255,0,0,alp )
+						surface.DrawOutlinedRect( scy4,scy4,scy5,scy5 )
+						cam.IgnoreZ( false ) 
+					cam.End3D2D()
+					
+					cam.Start3D2D( (OR + OFF ), Angle(0,0,90), sca2 )
+						surface.SetDrawColor( 0,255,0,alp )
+						surface.DrawOutlinedRect( scy4,scy4,scy5,scy5 )
+						cam.IgnoreZ( false ) 
+					cam.End3D2D()
+					
+					cam.Start3D2D( (OR + OFF ), Angle(0,0,0), sca2 )
+						surface.SetDrawColor( 0,0,255,alp )
+						surface.DrawOutlinedRect( scy4,scy4,scy5,scy5 )
+						cam.IgnoreZ( false ) 
+					cam.End3D2D()
+				end
+			end
+			
+			/*local tr = util.TraceLine( {
+				start = EyePos(),
+				endpos = EyePos() + EyeVec() * 32768,
+				mask =  MASK_PLAYERSOLID_BRUSHONLY,
+			} )*/
+			
+		end)
+		
+	end
+	
+	/*menu:hook( "PrePlayerDraw", "UCombatBox.SetupMenu_View", function( ply )
+		if IsValid(menu) and ply == LocalPlayer() then return true end
+		if not IsValid(menu) then hook.Remove("CalcView","UCombatBox.SetupMenu") return end
+	end )*/
+	
+	local lookup = {
+		["left"] = global,
+		["right"] = mode,
+		["bottom"] = invite,
+		["l"] = global,
+		["r"] = mode,
+		["b"] = invite,
+		["global"] = global,
+		["mode"] = mode,
+		["invite"] = invite,
+		["g"] = global,
+		["m"] = mode,
+		["i"] = invite,
+	}
+	
+	for k,PLUGIN in ipairs(UCombatBox.MenuPlugins) do
+		if PLUGIN.Parent then
+			local p = lookup[PLUGIN.Parent]
+			local parent  = p:Add("DCollapsibleList")
+			parent:MakeDroppable(PLUGIN.Name,false)
+			parent:DockMargin(0,0,6,0)
+			function parent:Paint( w, h )
+				surface.SetDrawColor(50,50,50,100)
+				surface.DrawRect(0,0,w,h)
+				if h < 21 then
+					surface.SetDrawColor(0,128,80,255)
+					surface.DrawRect(1,1,w-2,18)
+				else
+					surface.SetDrawColor(0,213,130,255)
+					surface.DrawRect(1,1,w-2,18)
+				end
+			end
+			
+			parent:SetLabel(PLUGIN.Name)
+			PLUGIN:Setup(parent, menu, ent)
+		end
+	end
+	
+	/*hook.Call("UCB_Setup_Global",GAMEMODE,function(xy) local a = global:Add(xy) a:Dock(TOP) a:DockPadding(5,5,5,5) a:DockMargin(5,5,5,5) return a end, menu, ent)
+	hook.Call("UCB_Setup_Mode",GAMEMODE,function(xy) local a = mode:Add(xy) a:Dock(TOP) a:DockPadding(5,5,5,5) a:DockMargin(5,5,5,5) return a end, menu, ent)
+	hook.Call("UCB_Setup_Invite",GAMEMODE,function(xy) local a = invite:Add(xy) a:Dock(TOP) a:DockPadding(5,5,5,5) a:DockMargin(5,5,5,5) return a end, menu, ent)
+	*/
+	--local addo = UCombatBox.SetupMenuAddOption --seems like making things moddable requires names everybody can understand while I'm even too lazy to copy/paste long names
+end
+	
+	local function addBoxPanel(p,e,t,own)
+		local pnl = p:Add("DPanel")
+		pnl:SetTall(60)
+		pnl:Dock(TOP)
+		
+		local lbl = pnl:Add("DLabel")
+		lbl:SetText("["..e:EntIndex().."]"..e.Data._N)
+		local name = e.Data._N
+		
+		local join = pnl:Add("DButton")
+		join:SetText("Join")
+		
+		if own then
+			local edit = pnl:Add("DButton")
+			edit:SetText("Edit")
+		end
+		
+		function pnl:Think()
+			if name ~= e.Data._N then
+				name = e.Data._N
+				lbl:SetText("["..e:EntIndex().."]"..e.Data._N)
+			end
+		end
+	end
+
+	function UCombatBox.OptionsMenu(optionsPanel)
+		local mine = optionsPanel:Add("DCollapsibleList")
+		mine:SetLabel("My Boxes")
+		
+		local yours = optionsPanel:Add("DCollapsibleList")
+		yours:SetLabel("Other Boxes")
+		
+		local function updatebrowser()
+			for e,t in ipairs(UCombatBox.ents) do
+				if e:GetOwnerStdID() == LocalPlayer():SteamID() then
+					addBoxPanel(mine,e,t,true)
+				else
+					addBoxPanel(yours,e,t,false)
+				end
+			end
+		end
+		
+		updatebrowser()
+	end
+	
+			
+	-- Actual options menu adding
+	hook.Add("PopulateToolMenu","AddMeIntoTheOptions",function()
+		spawnmenu.AddToolMenuOption("Utilities", "Uke's Combatbox", "UCombatBox", "Browse", "", "", UCombatBox.OptionsMenu, {})
+	end)
+
+UCombatBox.OpenSetupMenu(UCombatBox.setup_open)
